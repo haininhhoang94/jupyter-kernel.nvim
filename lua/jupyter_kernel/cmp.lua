@@ -8,7 +8,7 @@ end
 ---Return whether this source is available in the current context or not (optional).
 ---@return boolean
 function source:is_available()
-	return vim.b.jupyter_attached
+	return true
 end
 
 function source:get_debug_name()
@@ -19,6 +19,17 @@ end
 ---@param params cmp.SourceCompletionApiParams
 ---@param callback fun(response: lsp.CompletionResponse|nil)
 function source:complete(params, callback)
+	local ok_kernel, kernel = pcall(require, "jupyter_kernel")
+	if not ok_kernel then
+		callback({})
+		return
+	end
+
+	if not kernel.ensure_attached({ prompt = false, silent = true }) then
+		callback({})
+		return
+	end
+
 	local items = vim.fn.JupyterComplete(vim.g.__jupyter_timeout)
 	callback(items)
 end

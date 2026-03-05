@@ -1,30 +1,88 @@
 local M = {}
+M._cmp_registered = false
 
-local function _attach(kernel)
+local function _attach(kernel, opts)
+  opts = opts or {}
   vim.fn.JupyterAttach(kernel)
   vim.b.jupyter_attached = true
-  vim.notify("Attach to " .. kernel)
+
+  if not opts.silent then
+    vim.notify("Attach to " .. kernel)
+  end
+end
+
+local function list_kernels()
+  vim.fn.JupyterKernels()
+  local kernels = vim.fn.JupyterKernels()
+  if type(kernels) ~= "table" then
+    return {}
+  end
+  return kernels
+end
+
+local function latest_kernel()
+  local kernels = list_kernels()
+  return kernels[1]
 end
 
 function M.attach(opts)
-  local kernel = opts.args -- User supplied full path
+  opts = opts or {}
+  local kernel = opts.args or "" -- User supplied full path
   if kernel ~= "" then -- User didn't supply full path
     _attach(kernel)
   else
-    vim.fn.JupyterKernels() -- not sure why but 1st called always return nil
-    local kernels = vim.fn.JupyterKernels(kernel)
+    local kernels = list_kernels()
+    if #kernels == 0 then
+      vim.notify("No running jupyter kernels found", vim.log.levels.WARN)
+      return false
+    end
+
     kernel = vim.ui.select(kernels, { prompt = "Select a kernel" }, function(kernel)
       if kernel ~= nil then
         _attach(kernel)
       end
     end)
   end
+
+  return vim.b.jupyter_attached == true
+end
+
+function M.attach_latest(opts)
+  opts = opts or {}
+  local kernel = latest_kernel()
+
+  if not kernel then
+    if not opts.silent then
+      vim.notify("No running jupyter kernels found", vim.log.levels.WARN)
+    end
+    return false
+  end
+
+  _attach(kernel, { silent = opts.silent })
+  return true
+end
+
+function M.ensure_attached(opts)
+  opts = opts or {}
+
+  if vim.b.jupyter_attached == true then
+    return true
+  end
+
+  if M.opts.auto_attach.enabled then
+    return M.attach_latest({ silent = opts.silent ~= false and M.opts.auto_attach.silent })
+  end
+
+  if opts.prompt ~= false then
+    vim.notify("No jupyter kernel attached. Select kernel:")
+    M.attach({ args = "" })
+  end
+
+  return vim.b.jupyter_attached == true
 end
 
 function M.inspect()
-  if vim.b.jupyter_attached ~= true then
-    vim.notify("No jupyter kernel attached. Select kernel:")
-    M.attach({ args="" })
+  if not M.ensure_attached({ silent = true }) then
     return
   end
 
@@ -73,9 +131,7 @@ function M.inspect()
 end
 
 function M.execute(opts)
-  if vim.b.jupyter_attached ~= true then
-    vim.notify("No jupyter kernel attached. Select kernel:")
-    M.attach({ args="" })
+  if not M.ensure_attached({ silent = true }) then
     return
   end
   ---@diagnostic disable-next-line: param-type-mismatch
@@ -103,11 +159,38 @@ local default_config = {
   },
   -- time to wait for kernel's response in seconds
   timeout = 0.5,
+  auto_attach = {
+    enabled = true,
+    silent = true,
+  },
+  completion = {
+    backend = "cmp",
+  },
 }
+
+M.opts = vim.deepcopy(default_config)
+
+local function setup_completion_backends()
+  local backend = M.opts.completion.backend
+
+  if backend == "cmp" or backend == "both" then
+    local ok_cmp, cmp = pcall(require, "cmp")
+    if ok_cmp and not M._cmp_registered then
+      cmp.register_source("jupyter", require("jupyter_kernel.cmp").new())
+      M._cmp_registered = true
+    end
+  end
+
+  if backend == "blink" or backend == "both" then
+    _G.jupyter_kernel_blink_source = require("jupyter_kernel.blink")
+  end
+end
 
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", default_config, opts or {})
   vim.g.__jupyter_timeout = M.opts.timeout
+  vim.g.__jupyter_completion_backend = M.opts.completion.backend
+  setup_completion_backends()
 end
 
 return M

@@ -16,7 +16,7 @@ Open a floating window to inspect  object under the cursor
 - Result from LSP hover with same object:
 ![Screenshot 2023-02-24 at 15 24 01](https://user-images.githubusercontent.com/12573521/221217272-03676fd6-ed59-4dc3-8e03-4a8e66931fcb.png)
 
-## Auto Completion with nvim-cmp
+## Auto Completion with nvim-cmp / blink.cmp
 ![Screenshot 2023-02-24 at 15 25 55](https://user-images.githubusercontent.com/12573521/221217793-c6f12569-6049-4427-855d-15e850d889f3.png)
 
 ## Send code to execute in kernel
@@ -30,7 +30,7 @@ Use this alongside your terminal/qt console for basic text and image display, or
 
 - Neovim must have `python3` provider to run remote plugins (`:checkhealth provider`)
 - `python3 -m pip install -U pynvim jupyter_client` from your neovim's python provider.
-- Add `jupyter` to nvim-cmp sources.
+- Add `jupyter` to nvim-cmp sources (or add `jupyter` provider in blink.cmp).
 - Install plugin with your favorite package manager and call `require('jupyter-kernel.nvim').setup(opts)` to override default options.
 - Run `UpdateRemotePlugins` after installed.
 
@@ -39,6 +39,14 @@ Use this alongside your terminal/qt console for basic text and image display, or
 { 
   "jupyter-kernel.nvim", 
   opts = {
+    auto_attach = {
+      enabled = true,
+      silent = true,
+    },
+    completion = {
+      -- "cmp" | "blink" | "both" | "none"
+      backend = "cmp",
+    },
     inspect = {
       -- opts for vim.lsp.util.open_floating_preview
       window = {
@@ -47,8 +55,8 @@ Use this alongside your terminal/qt console for basic text and image display, or
     },
     -- time to wait for kernel's response in seconds
     timeout = 0.5,
-  }
-  cmd = {"JupyterAttach", "JupyterInspect", "JupyterExecute"},
+  },
+  cmd = {"JupyterAttach", "JupyterAttachLatest", "JupyterInspect", "JupyterExecute"},
   build = ":UpdateRemotePlugins",
   keys = { { "<leader>k", "<Cmd>JupyterInspect<CR>", desc = "Inspect object in kernel" } },
 }
@@ -68,6 +76,33 @@ Use this alongside your terminal/qt console for basic text and image display, or
     })
 }
 ```
+
+Use `completion.backend = "cmp"` (or `"both"`) in `require("jupyter-kernel.nvim").setup({...})`.
+
+## Add to blink.cmp sources
+```lua
+{
+  "saghen/blink.cmp",
+  opts = {
+    sources = {
+      default = { "lsp", "path", "snippets", "buffer", "jupyter" },
+      providers = {
+        jupyter = {
+          name = "jupyter",
+          module = "jupyter_kernel.blink",
+        },
+      },
+    },
+  },
+}
+```
+
+Use `completion.backend = "blink"` (or `"both"`) in `require("jupyter-kernel.nvim").setup({...})`.
+
+## Pair with pyrepl.nvim
+
+When `auto_attach.enabled = true` (default), `JupyterInspect`, `JupyterExecute`, and completion auto-attach to the latest running kernel.
+This works well with pyrepl: open pyrepl first, then use inspect/completion in your code buffer.
 
 # Usage
 
@@ -93,6 +128,7 @@ A popup will appear and list all the available kernels to connect to, sorted by 
 # References
 Only the following commands are provided, without any default keymaps.
 - `JupyterAttach`: 1st argument is path to kernel's json. If no path is provided, a popup will appear to select a running kernel to attach.
+- `JupyterAttachLatest`: attach to most recently started running kernel
 - `JupyterDetach`: detach buffer from kernel
 - `JupyterInspect`: inspect object under cursor. This command send the current line and cursor location to `jupyter_client`, it is up to the kernel to decide which object to inspect.
 - `JupyterExecute`: send code to execute in kernel. Support 3 options in order:
@@ -101,6 +137,16 @@ Only the following commands are provided, without any default keymaps.
   - Normal mode without argument: Send current line
 
 - Buffer variable `vim.b.jupyter_attached` to check if current buffer is attached to any kernel.
+
+- Config `auto_attach`:
+  - `enabled` (default `true`): auto-attach on inspect/execute/completion when detached
+  - `silent` (default `true`): suppress attach notification during auto-attach
+
+- Config `completion.backend`:
+  - `"cmp"` (default): register nvim-cmp source only
+  - `"blink"`: expose blink source only
+  - `"both"`: enable cmp + blink integration together
+  - `"none"`: do not register completion backend
 
 ```lua
 vim.keymap.set("n", "<leader>k", "<CMD>JupyterInspect<CR>", {desc = "Inspect object"})
