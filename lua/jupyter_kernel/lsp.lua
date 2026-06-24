@@ -99,14 +99,16 @@ function M._handle_completion(params, callback)
   end
 
   local code = table.concat(cell.source, "\n")
-  local cursor_pos = cell_mod.position_to_offset(cell, params.position)
+  -- Jupyter cursor_pos is in code points, not bytes.
+  local cursor_pos = cell_mod.byte_to_char(code, cell_mod.position_to_offset(cell, params.position))
 
   local ok = pcall(complete_async, code, cursor_pos, function(err, result)
     if err ~= nil or result == nil then
       return callback(nil, nil)
     end
-    local start_pos = cell_mod.offset_to_position(cell, result.cursor_start)
-    local end_pos = cell_mod.offset_to_position(cell, result.cursor_end)
+    -- cursor_start/end come back in code points → convert to byte offsets.
+    local start_pos = cell_mod.offset_to_position(cell, cell_mod.char_to_byte(code, result.cursor_start))
+    local end_pos = cell_mod.offset_to_position(cell, cell_mod.char_to_byte(code, result.cursor_end))
     local items = {}
     for i, match in ipairs(result.matches or {}) do
       items[i] = {
@@ -138,7 +140,8 @@ function M._handle_hover(params, callback)
   end
 
   local code = table.concat(cell.source, "\n")
-  local cursor_pos = cell_mod.position_to_offset(cell, params.position)
+  -- Jupyter cursor_pos is in code points, not bytes.
+  local cursor_pos = cell_mod.byte_to_char(code, cell_mod.position_to_offset(cell, params.position))
 
   local ok = pcall(inspect_async, code, cursor_pos, function(err, result)
     if err ~= nil or result == nil or not result.found then

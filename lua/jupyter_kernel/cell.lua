@@ -77,6 +77,44 @@ function M.position_to_offset(cell, position)
   return offset + col
 end
 
+---Count Unicode code points within the first ``byte_off`` bytes of ``s``.
+---Jupyter's complete/inspect cursor_pos is in code points, while LSP (utf-8)
+---positions and our offsets are byte-based — convert at that boundary.
+---@param s string
+---@param byte_off integer
+---@return integer
+function M.byte_to_char(s, byte_off)
+  local n = 0
+  for i = 1, math.min(byte_off, #s) do
+    local c = string.byte(s, i)
+    if c < 0x80 or c > 0xBF then -- not a UTF-8 continuation byte
+      n = n + 1
+    end
+  end
+  return n
+end
+
+---Byte offset immediately after the first ``cp`` code points of ``s``.
+---@param s string
+---@param cp integer
+---@return integer
+function M.char_to_byte(s, cp)
+  if cp <= 0 then
+    return 0
+  end
+  local n = 0
+  for i = 1, #s do
+    local c = string.byte(s, i)
+    if c < 0x80 or c > 0xBF then
+      n = n + 1
+      if n == cp + 1 then
+        return i - 1
+      end
+    end
+  end
+  return #s
+end
+
 ---Inverse of position_to_offset.
 ---@param cell jupyter_kernel.Cell
 ---@param byte_offset integer
