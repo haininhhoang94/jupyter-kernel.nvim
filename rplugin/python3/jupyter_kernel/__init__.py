@@ -125,6 +125,7 @@ class JupyterKernel:
   @pynvim.function("JupyterAttach")
   def attach(self, args):
     kernel = args[0]
+    use_jedi = bool(args[1]) if len(args) > 1 else True
 
     def _do_attach():
       if self.client is not None:
@@ -132,6 +133,12 @@ class JupyterKernel:
       client = BlockingKernelClient()
       client.load_connection_file(self.kerneldir / kernel)
       client.start_channels()
+      if not use_jedi:
+        # Faster, live-object-aware completion. Silent: no history/output.
+        try:
+          client.execute("get_ipython().Completer.use_jedi = False", silent=True)
+        except Exception:
+          pass
       self.client = client
 
     self._run_sync(_do_attach)

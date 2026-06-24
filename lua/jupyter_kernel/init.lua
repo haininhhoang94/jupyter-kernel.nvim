@@ -3,7 +3,8 @@ M._cmp_registered = false
 
 local function _attach(kernel, opts)
   opts = opts or {}
-  vim.fn.JupyterAttach(kernel)
+  local use_jedi = (M.opts.completion and M.opts.completion.use_jedi) and 1 or 0
+  vim.fn.JupyterAttach(kernel, use_jedi)
   vim.b.jupyter_attached = true
 
   if not opts.silent then
@@ -165,6 +166,10 @@ local default_config = {
   },
   completion = {
     backend = "cmp",
+    -- Disable IPython's jedi completer: much faster (no static type inference)
+    -- and, against a live kernel, dir()-based introspection of real objects is
+    -- typically what you want. Set true to keep jedi.
+    use_jedi = false,
   },
 }
 
