@@ -13,12 +13,6 @@ vim.api.nvim_create_user_command(
 vim.api.nvim_create_user_command("JupyterDetach", "call JupyterDetach()", { desc = "Detach jupyter kernel" })
 
 vim.api.nvim_create_user_command(
-	"JupyterInspect",
-	require("jupyter_kernel").inspect,
-	{ desc = "Inpsect object in the kernel" }
-)
-
-vim.api.nvim_create_user_command(
 	"JupyterExecute",
 	require("jupyter_kernel").execute,
 	{

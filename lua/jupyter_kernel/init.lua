@@ -1,5 +1,4 @@
 local M = {}
-M._cmp_registered = false
 
 local function _attach(kernel, opts)
   opts = opts or {}
@@ -82,55 +81,6 @@ function M.ensure_attached(opts)
   return vim.b.jupyter_attached == true
 end
 
-function M.inspect()
-  if not M.ensure_attached({ silent = true }) then
-    return
-  end
-
-  local inspect = vim.fn.JupyterInspect(M.opts.timeout)
-  local out = ""
-
-  if inspect.status ~= "ok" then
-    out = inspect.status
-  elseif inspect.found ~= true then
-    out = "_No information from kernel_"
-  else
-    local sections = vim.split(inspect.data["text/plain"], "\x1b%[0;31m")
-    for _, section in ipairs(sections) do
-      section = section
-        -- Strip ANSI Escape code: https://stackoverflow.com/a/55324681
-        -- \x1b is the escape character
-        -- %[%d+; is the ANSI escape code for a digit color
-        :gsub("\x1b%[%d+;%d+;%d+;%d+;%d+m", "")
-        :gsub("\x1b%[%d+;%d+;%d+;%d+m", "")
-        :gsub("\x1b%[%d+;%d+;%d+m", "")
-        :gsub("\x1b%[%d+;%d+m", "")
-        :gsub("\x1b%[%d+m", "")
-        :gsub("\x1b%[H", "\t")
-        -- Groups: name, 0 or more new line, content till end
-        -- TODO: Fix for non-python kernel
-        :gsub("^(Call signature):(%s*)(.-)\n$", "```python\n%3 # %1\n```")
-        :gsub("^(Init signature):(%s*)(.-)\n$", "```python\n%3 # %1\n```")
-        :gsub("^(Signature):(%s*)(.-)\n$",      "```python\n%3 # %1\n```")
-        :gsub("^(String form):(%s*)(.-)\n$",    "```python\n%3 # %1\n```")
-        :gsub("^(Docstring):(%s*)(.-)$",        "\n---\n```rst\n%3\n```")
-        :gsub("^(Class docstring):(%s*)(.-)$",  "\n---\n```rst\n%3\n```")
-        :gsub("^(File):(%s*)(.-)\n$",           "*%1*: `%3`\n")
-        :gsub("^(Type):(%s*)(.-)\n$",           "*%1*: %3\n")
-        :gsub("^(Length):(%s*)(.-)\n$",         "*%1*: %3\n")
-        :gsub("^(Subclasses):(%s*)(.-)\n$",     "*%1*: %3\n")
-      if section:match("%S") ~= nil and section:match("%S") ~= "" then
-        -- Only add non-empty section
-        out = out .. section
-      end
-    end
-  end
-
-  local markdown_lines = vim.lsp.util.convert_input_to_markdown_lines(out)
-  markdown_lines = vim.lsp.util.trim_empty_lines(markdown_lines)
-  vim.lsp.util.open_floating_preview(markdown_lines, "markdown", M.opts.inspect.window)
-end
-
 function M.execute(opts)
   if not M.ensure_attached({ silent = true }) then
     return
@@ -151,21 +101,13 @@ end
 
 
 local default_config = {
-  inspect = {
-    -- opts for vim.lsp.util.open_floating_preview
-    window = {
-      max_width = 84,
-      focus_id = "jupyter",
-    },
-  },
-  -- time to wait for kernel's response in seconds
+  -- time to wait for kernel's response in seconds (legacy; kept for callers)
   timeout = 0.5,
   auto_attach = {
     enabled = true,
     silent = true,
   },
   completion = {
-    backend = "cmp",
     -- Disable IPython's jedi completer: much faster (no static type inference)
     -- and, against a live kernel, dir()-based introspection of real objects is
     -- typically what you want. Set true to keep jedi.
@@ -175,27 +117,8 @@ local default_config = {
 
 M.opts = vim.deepcopy(default_config)
 
-local function setup_completion_backends()
-  local backend = M.opts.completion.backend
-
-  if backend == "cmp" or backend == "both" then
-    local ok_cmp, cmp = pcall(require, "cmp")
-    if ok_cmp and not M._cmp_registered then
-      cmp.register_source("jupyter", require("jupyter_kernel.cmp").new())
-      M._cmp_registered = true
-    end
-  end
-
-  if backend == "blink" or backend == "both" then
-    _G.jupyter_kernel_blink_source = require("jupyter_kernel.blink")
-  end
-end
-
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", default_config, opts or {})
-  vim.g.__jupyter_timeout = M.opts.timeout
-  vim.g.__jupyter_completion_backend = M.opts.completion.backend
-  setup_completion_backends()
 end
 
 return M
