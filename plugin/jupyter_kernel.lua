@@ -10,7 +10,9 @@ vim.api.nvim_create_user_command(
 	{ nargs = 0, desc = "Attach to latest running jupyter kernel" }
 )
 
-vim.api.nvim_create_user_command("JupyterDetach", "call JupyterDetach()", { desc = "Detach jupyter kernel" })
+vim.api.nvim_create_user_command("JupyterDetach", function()
+	require("jupyter_kernel").detach()
+end, { desc = "Detach jupyter kernel" })
 
 vim.api.nvim_create_user_command(
 	"JupyterExecute",

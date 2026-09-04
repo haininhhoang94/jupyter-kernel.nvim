@@ -102,6 +102,13 @@ Use `completion.backend = "blink"` (or `"both"`) in `require("jupyter-kernel.nvi
 ## Pair with pyrepl.nvim
 
 When `auto_attach.enabled = true` (default), `JupyterInspect`, `JupyterExecute`, and completion auto-attach to the latest running kernel.
+
+When used with a compatible `pyrepl.nvim`, `auto_attach.pyrepl_events = true`
+subscribes to PyREPL lifecycle events and attaches the exact connection file.
+This avoids polling and ambiguity when multiple Neovim/kernel sessions exist.
+`require("jupyter_kernel").inspect()` performs runtime inspect directly and
+falls back to the normal LSP hover when the kernel has no result; a virtual
+Jupyter LSP client is not required for this workflow.
 This works well with pyrepl: open pyrepl first, then use inspect/completion in your code buffer.
 
 # Usage

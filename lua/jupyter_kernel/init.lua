@@ -1,14 +1,25 @@
 local M = {}
+local attached_kernel = nil
 
 local function _attach(kernel, opts)
   opts = opts or {}
   local use_jedi = (M.opts.completion and M.opts.completion.use_jedi) and 1 or 0
-  vim.fn.JupyterAttach(kernel, use_jedi)
+  local ok, result = pcall(vim.fn.JupyterAttach, kernel, use_jedi)
+  if not ok or result ~= "ok" then
+    local message = tostring(result)
+    if not opts.silent then
+      vim.notify("Unable to attach Jupyter kernel: " .. message, vim.log.levels.ERROR)
+    end
+    return false
+  end
+
+  attached_kernel = kernel
   vim.b.jupyter_attached = true
 
   if not opts.silent then
     vim.notify("Attach to " .. kernel)
   end
+  return true
 end
 
 local function list_kernels()
@@ -28,8 +39,8 @@ end
 function M.attach(opts)
   opts = opts or {}
   local kernel = opts.args or "" -- User supplied full path
-  if kernel ~= "" then -- User didn't supply full path
-    _attach(kernel)
+  if kernel ~= "" then
+    return _attach(kernel)
   else
     local kernels = list_kernels()
     if #kernels == 0 then
@@ -44,7 +55,18 @@ function M.attach(opts)
     end)
   end
 
-  return vim.b.jupyter_attached == true
+  return attached_kernel ~= nil
+end
+
+function M.attach_kernel(kernel, opts)
+  if type(kernel) ~= "string" or kernel == "" then
+    return false
+  end
+  if attached_kernel == kernel then
+    vim.b.jupyter_attached = true
+    return true
+  end
+  return _attach(kernel, opts)
 end
 
 function M.attach_latest(opts)
@@ -58,14 +80,14 @@ function M.attach_latest(opts)
     return false
   end
 
-  _attach(kernel, { silent = opts.silent })
-  return true
+  return M.attach_kernel(kernel, { silent = opts.silent })
 end
 
 function M.ensure_attached(opts)
   opts = opts or {}
 
-  if vim.b.jupyter_attached == true then
+  if attached_kernel ~= nil then
+    vim.b.jupyter_attached = true
     return true
   end
 
@@ -78,7 +100,61 @@ function M.ensure_attached(opts)
     M.attach({ args = "" })
   end
 
-  return vim.b.jupyter_attached == true
+  return attached_kernel ~= nil
+end
+
+function M.detach(opts)
+  opts = opts or {}
+  if attached_kernel == nil then
+    vim.b.jupyter_attached = false
+    return true
+  end
+
+  local ok, result = pcall(vim.fn.JupyterDetach)
+  attached_kernel = nil
+  vim.b.jupyter_attached = false
+  if (not ok or result ~= "ok") and not opts.silent then
+    vim.notify("Unable to detach Jupyter kernel: " .. tostring(result), vim.log.levels.WARN)
+  elseif not opts.silent then
+    vim.notify("Jupyter kernel detached", vim.log.levels.INFO)
+  end
+  return ok and result == "ok"
+end
+
+function M.current_kernel()
+  return attached_kernel
+end
+
+function M.inspect(opts)
+  opts = opts or {}
+  local fallback = opts.fallback or function()
+    vim.lsp.buf.hover()
+  end
+  if not M.ensure_attached({ prompt = false, silent = true }) then
+    fallback()
+    return false
+  end
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  require("jupyter_kernel.lsp").inspect_at(bufnr, {
+    line = cursor[1] - 1,
+    character = cursor[2],
+  }, function(err, result)
+    if err or not result or not result.contents then
+      fallback()
+      return
+    end
+    local lines = vim.lsp.util.convert_input_to_markdown_lines(result.contents)
+    lines = vim.lsp.util.trim_empty_lines(lines)
+    if vim.tbl_isempty(lines) then
+      fallback()
+      return
+    end
+    local window = vim.tbl_deep_extend("force", { border = "rounded" }, M.opts.inspect.window or {})
+    vim.lsp.util.open_floating_preview(lines, "markdown", window)
+  end)
+  return true
 end
 
 function M.execute(opts)
@@ -106,6 +182,7 @@ local default_config = {
   auto_attach = {
     enabled = true,
     silent = true,
+    pyrepl_events = true,
   },
   completion = {
     -- Disable IPython's jedi completer: much faster (no static type inference)
@@ -113,12 +190,35 @@ local default_config = {
     -- typically what you want. Set true to keep jedi.
     use_jedi = false,
   },
+  inspect = {
+    window = {},
+  },
 }
 
 M.opts = vim.deepcopy(default_config)
 
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", default_config, opts or {})
+  local group = vim.api.nvim_create_augroup("JupyterKernelPyreplLifecycle", { clear = true })
+  if M.opts.auto_attach.pyrepl_events then
+    vim.api.nvim_create_autocmd("User", {
+      group = group,
+      pattern = "PyreplKernelReady",
+      callback = function(args)
+        local connection_file = args.data and args.data.connection_file or nil
+        if connection_file then
+          M.attach_kernel(connection_file, { silent = M.opts.auto_attach.silent })
+        end
+      end,
+    })
+    vim.api.nvim_create_autocmd("User", {
+      group = group,
+      pattern = { "PyreplKernelStopped", "PyreplKernelError" },
+      callback = function()
+        M.detach({ silent = true })
+      end,
+    })
+  end
 end
 
 return M

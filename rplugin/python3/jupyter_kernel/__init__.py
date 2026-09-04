@@ -88,7 +88,7 @@ class JupyterKernel:
     kernels = sorted(kernels, reverse=True, key=lambda f: f.stat().st_ctime)
     return [kern.name for kern in kernels]
 
-  @pynvim.function("JupyterAttach")
+  @pynvim.function("JupyterAttach", sync=True)
   def attach(self, args):
     kernel = args[0]
     use_jedi = bool(args[1]) if len(args) > 1 else True
@@ -108,8 +108,9 @@ class JupyterKernel:
       self.client = client
 
     self._run_sync(_do_attach)
+    return "ok"
 
-  @pynvim.function('JupyterDetach')
+  @pynvim.function('JupyterDetach', sync=True)
   def detach(self, args):
     del args
 
@@ -120,7 +121,7 @@ class JupyterKernel:
 
     self._run_sync(_do_detach)
     self.vim.command("let b:jupyter_attached = v:false")
-    self.vim.command('echo "Jupyter kernel detached"')
+    return "ok"
 
   # --------------------------------------------------------------------
   # Code execution (submit-only; pyrepl-driven dataframe/excel/inventory

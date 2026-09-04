@@ -163,6 +163,17 @@ function M._handle_hover(params, callback)
   end
 end
 
+---Inspect a position without attaching the virtual LSP client.
+---@param bufnr integer
+---@param position {line: integer, character: integer}
+---@param callback fun(err: any, result: any)
+function M.inspect_at(bufnr, position, callback)
+  M._handle_hover({
+    textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+    position = position,
+  }, callback)
+end
+
 ---@type table<string, fun(params: any, callback: fun(err: any, result: any))>
 local METHODS = {
   initialize = function(_, callback)
