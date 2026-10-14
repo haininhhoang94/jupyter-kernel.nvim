@@ -25,6 +25,13 @@ function M.cancel(req_id)
   pending[req_id] = nil
 end
 
+---Whether ``req_id`` is still waiting for its reply.
+---@param req_id integer
+---@return boolean
+function M.is_pending(req_id)
+  return pending[req_id] ~= nil
+end
+
 ---Called from the rplugin. Looks up the callback and dispatches it on the main
 ---loop. Unknown ids are ignored so a late reply never crashes Neovim. ``vim.NIL``
 ---(msgpack form of Python ``None``) is normalized to Lua ``nil``.

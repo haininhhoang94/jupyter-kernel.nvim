@@ -175,6 +175,69 @@ function M.execute(opts)
   end
 end
 
+---Run ``code`` in the attached kernel without blocking the editor.
+---
+---``opts.silent`` (default true): no execution count, no history, and an error
+---does not abort cells queued behind it. ``opts.user_expressions`` maps names to
+---expressions evaluated after the code; ``opts.timeout`` is in ms (default
+---30000). ``cb(err, reply)`` runs on the main loop with
+---``reply = { status, execution_count, ename, evalue, user_expressions }``;
+---``status`` is "ok", "error" or "aborted" (an earlier non-silent request in the
+---kernel queue failed).
+---@param code string
+---@param opts {silent: boolean?, user_expressions: table<string,string>?, timeout: integer?}|nil
+---@param cb fun(err: string?, reply: table?)
+function M.execute_async(code, opts, cb)
+  opts = opts or {}
+  if not M.ensure_attached({ prompt = false, silent = true }) then
+    vim.schedule(function()
+      cb("No jupyter kernel attached", nil)
+    end)
+    return
+  end
+
+  local async = require("jupyter_kernel.async")
+  local timeout = opts.timeout or 30000
+  local timer = assert(vim.uv.new_timer())
+  local function close_timer()
+    if not timer:is_closing() then
+      timer:stop()
+      timer:close()
+    end
+  end
+
+  local req_id = async.register(function(err, reply)
+    close_timer()
+    cb(err, reply)
+  end)
+  timer:start(timeout, 0, function()
+    close_timer()
+    vim.schedule(function()
+      if async.is_pending(req_id) then
+        async.cancel(req_id)
+        cb(string.format("timed out after %gs", timeout / 1000), nil)
+      end
+    end)
+  end)
+
+  local exprs = opts.user_expressions
+  if type(exprs) ~= "table" or vim.tbl_isempty(exprs) then
+    exprs = vim.empty_dict()
+  end
+  local ok, err = pcall(vim.fn.JupyterExecuteAsync, req_id, code, {
+    silent = opts.silent ~= false,
+    user_expressions = exprs,
+    -- Let the rplugin drop its waiter a little after we give up.
+    timeout = timeout / 1000 + 5,
+  })
+  if not ok then
+    async.cancel(req_id)
+    close_timer()
+    vim.schedule(function()
+      cb("JupyterExecuteAsync failed: " .. tostring(err), nil)
+    end)
+  end
+end
 
 local default_config = {
   -- time to wait for kernel's response in seconds (legacy; kept for callers)
